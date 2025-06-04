@@ -14,5 +14,5 @@ def relative_time(label: str, dt: datetime):
 
     return {
         "body": f"**{label}:** {humanize.naturaltime(diff)}",
-        "help": dt.astimezone().strftime("%Y-%m-%d %H:%M:%S"),
+        "help": dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC"),
     }
