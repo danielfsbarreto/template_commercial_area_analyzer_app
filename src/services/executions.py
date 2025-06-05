@@ -1,7 +1,6 @@
 import asyncio
 import json
 from base64 import b64decode, b64encode
-from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
 
@@ -10,36 +9,32 @@ from models import Execution
 
 
 class ExecutionsService:
+    INPUT_FILE = "input.csv"
+    OUTPUT_FILE = "output.csv"
+
     def __init__(self):
         self.s3 = S3Client()
         self.crewai = CrewAiClient()
 
-    def list_executions(self):
-        files = self.s3.list_files()
-        grouped_files = defaultdict(list)
-        for file in files:
-            if file.uuid:
-                grouped_files[file.uuid].append(file)
-        executions = []
-        for uuid, files in grouped_files.items():
-            input_file = next(
-                (f for f in files if f.key and f.key.endswith("input.csv")), None
-            )
-            output_file = next(
-                (f for f in files if f.key and f.key.endswith("output.csv")), None
-            )
-            executions.append(
-                Execution(
-                    uuid=uuid,
-                    input_file=input_file,
-                    output_file=output_file,
-                    started_at=input_file.last_modified if input_file else None,
-                    completed_at=output_file.last_modified if output_file else None,
-                    status="pending" if input_file and not output_file else "completed",
-                )
-            )
-        executions.sort(key=lambda e: e.started_at or 0, reverse=True)
-        return executions
+    def list_execution_ids(self) -> list[str]:
+        return self.s3.find_unique_uuids()
+
+    def find(self, uuid: str) -> Execution:
+        files = self.s3.find_files_with(uuid)
+        input_file = next(
+            (f for f in files if f.key and f.key.endswith(self.INPUT_FILE)), None
+        )
+        output_file = next(
+            (f for f in files if f.key and f.key.endswith(self.OUTPUT_FILE)), None
+        )
+        return Execution(
+            uuid=uuid,
+            input_file=input_file,
+            output_file=output_file,
+            started_at=input_file.last_modified if input_file else None,
+            completed_at=output_file.last_modified if output_file else None,
+            status="pending" if input_file and not output_file else "completed",
+        )
 
     def start_execution(self, file: bytes):
         def _run_async_status():

@@ -18,12 +18,24 @@ class S3Client:
         self.bucket_name = os.getenv("AWS_BUCKET_NAME")
         self.bucket_path = os.getenv("AWS_BUCKET_PATH")
 
-    def list_files(self):
-        response = self.s3.list_objects_v2(
-            Bucket=self.bucket_name, Prefix=self.bucket_path
-        )
-        contents = response.get("Contents", [])
+    def find_unique_uuids(self):
+        contents = self._list_objects()
+        # TODO: Fix the need for leaking the file name to this layer
+        input_files = [obj for obj in contents if obj["Key"].endswith("input.csv")]
+        return [self._extract_uuid(obj["Key"]) for obj in input_files]
 
+    def find_files_with(self, uuid: str):
+        return self._find_files_with(uuid)
+
+    def upload_file(self, file: bytes, uuid: str, name: str):
+        file_obj = BytesIO(file)
+        file_name = f"{uuid}/{name}"
+        file_path = f"{self.bucket_path}{file_name}"
+
+        self.s3.upload_fileobj(file_obj, self.bucket_name, file_path)
+
+    def _find_files_with(self, uuid: str = ""):
+        contents = self._list_objects(uuid)
         s3_files = []
         for obj in contents:
             if obj["Key"] != self.bucket_path:
@@ -49,12 +61,12 @@ class S3Client:
 
         return s3_files
 
-    def upload_file(self, file: bytes, uuid: str, name: str):
-        file_obj = BytesIO(file)
-        file_name = f"{uuid}/{name}"
-        file_path = f"{self.bucket_path}{file_name}"
-
-        self.s3.upload_fileobj(file_obj, self.bucket_name, file_path)
+    def _list_objects(self, uuid: str = ""):
+        response = self.s3.list_objects_v2(
+            Bucket=self.bucket_name, Prefix=f"{self.bucket_path}{uuid}"
+        )
+        contents = response.get("Contents", [])
+        return sorted(contents, key=lambda obj: obj["LastModified"], reverse=True)
 
     def _extract_uuid(self, key: str):
         uuid_match = re.search(
